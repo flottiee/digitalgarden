@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* тема hesoyam добавляется модулем автоматически (hesoyam.theme: true) */
+
+/* семантические алиасы поверх токенов tímы hesoyam */
+@theme inline {
+  --color-background: var(--ds-background-100);
+  --color-card: var(--ds-background-200);
+  --color-foreground: var(--ds-gray-1000);
+  --color-muted: var(--ds-gray-600);
+  --color-border: var(--ds-gray-alpha-400);
+  --color-accent: var(--ds-amber-700);
+}
+
+html {
+  scroll-behavior: smooth;
+}
