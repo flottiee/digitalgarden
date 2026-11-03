@@ -32,6 +32,68 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  api:
+    # build из adjacной копии кода backend (Dockerfile рядом)
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      # CORS: прод-сайт + localhost придумывается только для разработки
+      CORS_ORIGINS: ${CORS_ORIGINS:-[]}
+      COOKIE_SECURE: "true"
+      ENVIRONMENT: prod
+    ports:
+      # ТОЛЬКО loopback: отладка curl'ом с самого сервера, наружу портов нет
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # /health проверяет и БД (SELECT 1) — полный healthcheck цепочки
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tunnel:
+    # cloudflared: публикует api.flottiee.bond в интернет ЧЕРЕЗ Cloudflare,
+    # без единого открытого порта на роутере/сервере.
+    # Запуск ДОБРОВОЛЬНО, когда появится токен туннеля:
+    #   docker compose --profile tunnel up -d
+    image: cloudflare/cloudflared:latest
+    container_name: backend-tunnel
+    restart: unless-stopped
+    command: tunnel run --no-autoupdate
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    profiles: ["tunnel"]
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   backend:
     # фиксированное имя "backend" (без префикса проекта), чтобы будущие

@@ -1,0 +1,11 @@
+# Зависимости для docker-образа. Дублируют backend/pyproject.toml
+# (piP не умеет ставить из pyproject без исходников пакета).
+fastapi>=0.115
+uvicorn>=0.32
+sqlalchemy[asyncio]>=2.0.36
+asyncpg>=0.30
+alembic>=1.14
+pydantic[email]>=2.10
+pydantic-settings>=2.6
+bcrypt>=4.2
+pyjwt>=2.10
