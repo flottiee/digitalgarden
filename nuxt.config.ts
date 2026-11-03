@@ -5,6 +5,18 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  // backend API: переопределяется переменной NUXT_PUBLIC_API_BASE
+  // (dev: http://localhost:8000, prod: https://…ts.net)
+  runtimeConfig: {
+    public: {
+      apiBase: 'http://localhost:8000',
+    },
+  },
+
+  nitro: {
+    preset: 'cloudflare_module',
+  },
+
   vite: {
     plugins: [tailwindcss()],
     optimizeDeps: {
