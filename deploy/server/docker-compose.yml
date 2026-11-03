@@ -1,0 +1,39 @@
+# Backend-стек flottiee-server.
+# Сейчас: db (PostgreSQL 17). Позже здесь же появятся api (FastAPI) и cloudflared.
+# Правила безопасности:
+#   - порт 5432 НЕ публикуется на хост: доступ к базе только внутри сети backend;
+#   - секреты читаются из .env рядом с этим файлом (chmod 600, не в git);
+#   - данные живут на HDD: /srv/storage/services/postgres/data.
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: backend-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - /srv/storage/services/postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready: контейнер считается здоровым, когда Postgres принимает подключения
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+    logging:
+      # не даём логам заспамить HDD годами работы
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  backend:
+    # фиксированное имя "backend" (без префикса проекта), чтобы будущие
+    # compose-проекты могли подключаться к этой же сети через external: true
+    name: backend
