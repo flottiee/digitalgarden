@@ -5,12 +5,11 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  // backend API: переопределяется переменной NUXT_PUBLIC_API_BASE
-  // (dev: http://localhost:8000, prod: https://…ts.net)
+  // backend API: где Worker ищет FastAPI на проде.
+  // Непубличный ключ — браузер НЕ видит адрес и ходит через наш прокси
+  // (server/routes/auth + server/routes/api → server/utils/apiProxy.ts).
   runtimeConfig: {
-    public: {
-      apiBase: 'http://localhost:8000',
-    },
+    apiOrigin: 'http://localhost:8000',
   },
 
   nitro: {

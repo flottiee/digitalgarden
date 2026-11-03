@@ -1,13 +1,10 @@
 /**
  * SDK общения с backend (FastAPI).
  *
- * База берётся из runtimeConfig.public.apiBase — её переопределяет
- * переменная окружения NUXT_PUBLIC_API_BASE:
- *   dev would: http://localhost:8000 (по умолчанию)
- *   prod:      https://<сервер>.<tcpnet>.ts.net (Tailscale serve)
- *
- * credentials: 'include' — JWT лежит в httpOnly cookie Домена API,
- * при cross-origin (api не на flottiee.bond) cookie нужно явно просить.
+ * Ходим на СОБСТВЕННЫЙ origin: Nuxt (Nitro) проксирует /auth/** и /api/**
+ * на серверный FastAPI (см. server/routes/, server/utils/apiProxy.ts).
+ * Так JWT-cookie является first-party (domain сайта) и не блокируется
+ * браузерами как сторонняя — главный фикс прод-авторизации в Safari/iPhone.
  */
 
 export interface ScheduleEventItem {
@@ -31,9 +28,9 @@ export interface ScheduleApi {
 }
 
 export function useApiClient(): ScheduleApi {
-  const { public: pub } = useRuntimeConfig()
+  // baseURL не указываем → запросы уходят на домен самой страницы,
+  // где их встречает Nitro-прокси (это верно и в dev, и в проде).
   return $fetch.create({
-    baseURL: pub.apiBase,
     credentials: 'include',
   }) as ScheduleApi
 }
