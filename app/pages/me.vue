@@ -77,6 +77,8 @@ const range = computed(() => {
 })
 
 const isToday = computed(() => startOf(anchor.value).getTime() === startOf(new Date()).getTime())
+const dateKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const dayTitle = computed(() =>
   new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(anchor.value))
@@ -116,31 +118,6 @@ async function load() {
 
 watch(range, load)
 watch(user, load)
-
-// --- группировка для отображения -------------------------------------------
-
-const dateKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
-const weekDays = computed(() => {
-  if (mode.value !== 'week')
-    return []
-  const fmt = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' })
-  const monday = startOfWeek(anchor.value)
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = addDays(monday, i)
-    return { label: `${fmt.format(d)}, ${d.getDate()}`, dateKey: dateKey(d), date: d }
-  })
-})
-
-const byDate = computed(() => {
-  const map = new Map<string, ScheduleEventItem[]>()
-  for (const ev of events.value) {
-    const key = dateKey(new Date(ev.starts_at))
-    map.set(key, [...(map.get(key) ?? []), ev])
-  }
-  return map
-})
 
 // --- время ------------------------------------------------------------------
 
@@ -403,10 +380,10 @@ onMounted(checkAuth)
 
           <div class="flex items-center gap-1">
             <button
-              v-if="editing"
+              v-if="editing && mode === 'day'"
               type="button"
               class="mr-2 flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs outline-none transition-colors hover:bg-card"
-              @click="openCreate(range.from)"
+              @click="openCreate(anchor)"
             >
               <Plus class="size-3.5" />
               Добавить
@@ -499,61 +476,17 @@ onMounted(checkAuth)
             </li>
           </ul>
 
-          <!-- неделя -->
-          <ol v-else class="mt-4 divide-y divide-border">
-            <li v-for="d in weekDays" :key="d.dateKey" class="py-3">
-              <div class="flex items-center justify-between">
-                <h3 class="text-muted text-xs tabular-nums uppercase">
-                  {{ d.label }}
-                </h3>
-                <button
-                  v-if="editing"
-                  type="button"
-                  title="Добавить событие на этот день"
-                  class="grid size-7 place-items-center rounded-full text-muted outline-none hover:text-foreground"
-                  @click="openCreate(d.date)"
-                >
-                  <Plus class="size-3.5" />
-                </button>
-              </div>
-              <template v-if="byDate.get(d.dateKey)?.length">
-                <div
-                  v-for="ev in byDate.get(d.dateKey)"
-                  :key="ev.id"
-                  class="flex items-start gap-4 py-2"
-                >
-                  <time class="text-muted w-24 shrink-0 text-xs tabular-nums">
-                    {{ fmtRange(ev) }}
-                  </time>
-                  <div class="min-w-0 flex-1">
-                    <p class="text-sm">{{ ev.title }}</p>
-                    <p v-if="ev.description" class="text-muted/80 mt-0.5 text-xs leading-relaxed">
-                      {{ ev.description }}
-                    </p>
-                  </div>
-                  <div v-if="editing" class="flex items-center gap-1">
-                    <button
-                      type="button"
-                      title="Изменить"
-                      class="grid size-7 place-items-center rounded-full text-muted outline-none hover:text-foreground"
-                      @click="openEdit(ev)"
-                    >
-                      <Pencil class="size-3" />
-                    </button>
-                    <button
-                      type="button"
-                      :title="pendingDelete === ev.id ? 'Точно удалить?' : 'Удалить'"
-                      class="grid size-7 place-items-center rounded-full outline-none transition-colors"
-                      :class="pendingDelete === ev.id ? 'text-foreground' : 'text-muted hover:text-foreground'"
-                      @click="removeEvent(ev)"
-                    >
-                      <Trash2 class="size-3" />
-                    </button>
-                  </div>
-                </div>
-              </template>
-            </li>
-          </ol>
+          <!-- неделя: сетка 7×24 с плитками -->
+          <ScheduleWeekGrid
+            v-else
+            :days="weekDays"
+            :events="events"
+            :editing="editing"
+            :pending-delete="pendingDelete"
+            @edit="openEdit"
+            @remove="removeEvent"
+            @create="openCreate"
+          />
         </section>
       </template>
     </main>
