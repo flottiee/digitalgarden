@@ -9,8 +9,10 @@ FastAPI + PostgreSQL. Aсинхронный сервис для сайта-ви�
 app/
 ├── main.py        точка входа: CORS, роутеры, Swagger (/docs)
 ├── core/
-│   ├── config.py  настройки из env (pydantic-settings)
-│   └── db.py      async-engine и сессия SQLAlchemy
+│   ├── config.py   настройки из env (pydantic-settings)
+│   ├── db.py       async-engine и сессия SQLAlchemy
+│   ├── security.py bcrypt-хэши паролей, JWT, httpOnly cookie
+│   └── deps.py     зависимости: get_current_user (cookie -> JWT -> User)
 ├── models/        ORM-модели (таблицы)
 ├── schemas/       Pydantic: контракт запросов/ответов
 ├── services/      бизнес-логика

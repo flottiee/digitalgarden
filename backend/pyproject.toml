@@ -13,9 +13,13 @@ dependencies = [
     "asyncpg>=0.30",
     # миграции
     "alembic>=1.14",
-    # валидация и конфиг из env-переменных
-    "pydantic>=2.10",
+    # валидация и конфиг из env-переменных; extra "email" добавляет валидацию EmailStr
+    "pydantic[email]>=2.10",
     "pydantic-settings>=2.6",
+    # хэширование паролей (в хэш зашита собственная соль)
+    "bcrypt>=4.2",
+    # подпись и проверка JWT-токенов
+    "pyjwt>=2.10",
 ]
 
 [project.optional-dependencies]
