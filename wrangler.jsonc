@@ -4,6 +4,11 @@
 	"compatibility_date": "2026-10-30",
 	"main": ".output/server/index.mjs",
 	"compatibility_flags": ["nodejs_compat"],
+	// адрес backend API via Tailscale (runtimeConfig.public.apiBase в nuxt.config)
+	// NUXT_PUBLIC_API_BASE читается Nitro'ом в рантайме и подмешивается в клиент
+	"vars": {
+		"NUXT_PUBLIC_API_BASE": "https://flottiee-server.tail5d1467.ts.net"
+	},
 	"assets": {
 		"directory": ".output/public"
 	},
