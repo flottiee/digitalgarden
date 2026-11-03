@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser
-from app.models.user import User
 from app.schemas.events import EventCreate, EventOut, EventUpdate
 from app.services import events as events_service
 

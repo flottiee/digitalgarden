@@ -9,7 +9,6 @@ from fastapi import Response
 
 from app.core.config import get_settings
 
-
 # --- пароли ---------------------------------------------------------------
 
 def hash_password(plain: str) -> str:
