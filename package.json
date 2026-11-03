@@ -7,14 +7,12 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "preview": "nuxt build && wrangler dev",
     "postinstall": "nuxt prepare",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "deploy": "nuxt build && wrangler deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^1.20.15",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^20",
     "eslint": "^9",
