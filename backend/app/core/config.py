@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     cookie_name: str = "access_token"
     # Secure=true разрешает передавать cookie только по https (прод, Tunnel)
     cookie_secure: bool = False
+    # SameSite домена API: "lax" для local dev (localhost), "none" для прод-домена
+    # (api.flottiee.bond или *.ts.net — cross-site по отношению к flottiee.bond);
+    # SameSite=None устойчив только вместе с Secure
+    cookie_samesite: str = "lax"
 
     # CORS: какие origin-ы фронтенда могут вызывать API из браузера
     cors_origins: list[str] = Field(

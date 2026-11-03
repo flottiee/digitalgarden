@@ -45,6 +45,7 @@ services:
       # CORS: прод-сайт + localhost придумывается только для разработки
       CORS_ORIGINS: ${CORS_ORIGINS:-[]}
       COOKIE_SECURE: "true"
+      COOKIE_SAMESITE: "none"
       ENVIRONMENT: prod
     ports:
       # ТОЛЬКО loopback: отладка curl'ом с самого сервера, наружу портов нет
