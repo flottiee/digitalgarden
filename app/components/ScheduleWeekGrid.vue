@@ -151,10 +151,10 @@ watch(
 <template>
   <div
     ref="scroller"
-    class="mt-6 max-h-[calc(100dvh-150px)] min-h-[360px] overflow-auto overscroll-contain rounded-2xl border border-border bg-card/40 lg:h-[calc(100dvh-310px)] lg:max-h-none"
+    class="mt-6 flex max-h-[calc(100dvh-160px)] min-h-[360px] w-full flex-col overflow-auto overscroll-contain rounded-2xl border border-border bg-card/40 lg:mt-3 lg:min-h-0 lg:max-h-none lg:flex-1"
   >
     <div
-      class="grid h-auto min-w-[760px] lg:h-full"
+      class="grid min-w-[760px] flex-1"
       :style="{
         gridTemplateColumns: `52px repeat(${days.length}, minmax(92px, 1fr))`,
         gridTemplateRows: 'auto 1fr',

@@ -56,6 +56,8 @@ async function logout() {
 
 type Mode = 'day' | 'week'
 const mode = ref<Mode>('day')
+// недельный режим: страница растягивается на всю ширину/высоту экрана
+const wide = computed(() => !!user.value && mode.value === 'week')
 const anchor = ref(new Date())
 const editing = ref(false) // «карандашик»: включает режим правки
 
@@ -266,7 +268,10 @@ onMounted(checkAuth)
       </template>
     </header>
 
-    <main class="relative z-[1] mx-auto w-full max-w-3xl flex-1 px-4 pt-16 pb-20 sm:px-6 sm:pt-24">
+    <main
+      class="relative z-[1] mx-auto w-full flex-1 px-4 pt-6 pb-8 sm:px-6 sm:pt-8"
+      :class="wide ? 'max-w-7xl lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden' : 'max-w-3xl sm:pt-24 sm:pb-20'"
+    >
       <!-- состояние: проверяем доступ -->
       <p v-if="authState === 'pending'" class="pt-10 text-center text-sm text-muted">
         Загрузка…
@@ -433,7 +438,7 @@ onMounted(checkAuth)
         </div>
 
         <!-- период -->
-        <section class="mt-8" aria-live="polite">
+        <section class="mt-6 flex flex-col lg:mt-4 lg:min-h-0 lg:flex-1" aria-live="polite">
           <h2 class="text-sm font-medium">
             <span class="sr-only">Период: </span>{{ periodTitle }}
           </h2>
