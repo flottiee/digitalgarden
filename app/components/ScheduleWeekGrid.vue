@@ -1,14 +1,18 @@
 <script setup lang="ts">
 /**
  * Недельная сетка: колонки — дни недели, строки — 24 часа.
- * События — абсолютные плитки: позиция строго по минутам события
- * (17:20 не «прилипает» к часам), пересечения раскладываются по дорожкам.
+ * События — цветные плитки, позиционируемые в % от суток:
+ * точные минуты (17:20 не «прилипает» к часам). Пересечения
+ * раскладываются по дорожкам.
+ *
+ * Геометрия на % позволяет: большой экран — вся сетка без скролла,
+ * маленький — час держит минимальную высоту и появляется скролл.
  */
 import { Plus, Trash2 } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ScheduleEventItem } from '~/composables/useApi'
 
-const HOUR = 48 // px на один час — вся геометрия сетки отсюда
+const MIN_HOUR = 40 // px на один час минимум на малых экранах (включает скролл)
 
 export interface WeekDay {
   weekday: string
@@ -44,12 +48,24 @@ const fmtTime = (iso: string) =>
 const dateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
+// --- цвет плитки: стабильный по id события ----------------------------------
+
+// оттенки подобраны приглушёнными, тоника через color-mix с токенами темы
+const HUES = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899']
+
+function colorClass(id: string) {
+  let hash = 0
+  for (let i = 0; i < id.length; i++)
+    hash = (hash * 31 + id.charCodeAt(i)) | 0
+  return `sw${Math.abs(hash) % HUES.length}`
+}
+
 // --- раскладка плиток --------------------------------------------------------
 
 interface Tile {
   ev: ScheduleEventItem
-  top: number
-  height: number
+  topFrac: number // 0..1 доля суток
+  heightFrac: number
   lane: number
   lanes: number
   ranOver: boolean // заканчивается за полночь — визуально обрезаем
@@ -75,20 +91,16 @@ function layout(events: ScheduleEventItem[], dayStartMs: number): Tile[] {
     return { ev, s, e, lane }
   })
   const lanes = Math.max(laneEnds.length, 1)
-  return raw.map(({ ev, s, e, lane }) => {
-    const top = ((s - dayStartMs) / 3_600_000) * HOUR
-    const h = ((Math.min(e, dayEndMs) - s) / 3_600_000) * HOUR
-    return {
-      ev,
-      lane,
-      lanes,
-      top,
-      height: Math.max(h, 20),
-      ranOver: e > dayEndMs - 1,
-      startText: fmtTime(ev.starts_at),
-      endText: ev.ends_at ? fmtTime(ev.ends_at) : '',
-    }
-  })
+  return raw.map(({ ev, s, e, lane }) => ({
+    ev,
+    lane,
+    lanes,
+    topFrac: (s - dayStartMs) / 86_400_000,
+    heightFrac: (Math.min(e, dayEndMs) - s) / 86_400_000,
+    ranOver: e > dayEndMs - 1,
+    startText: fmtTime(ev.starts_at),
+    endText: ev.ends_at ? fmtTime(ev.ends_at) : '',
+  }))
 }
 
 const tilesByDay = computed(() => {
@@ -105,24 +117,22 @@ const tilesByDay = computed(() => {
   return map
 })
 
-const laneStyle = (t: Tile) => {
-  const w = 100 / t.lanes
-  return {
-    top: `${t.top}px`,
-    height: `${t.height}px`,
-    left: `calc(${t.lane * w}% + 3px)`,
-    width: `calc(${w}% - 6px)`,
-  }
-}
+const laneStyle = (t: Tile) => ({
+  top: `${t.topFrac * 100}%`,
+  height: `${t.heightFrac * 100}%`,
+  minHeight: '20px',
+  left: `calc(${(t.lane * 100) / t.lanes}% + 3px)`,
+  width: `calc(${100 / t.lanes}% - 6px)`,
+})
 
 // --- линия «сейчас» и подсветка сегодня --------------------------------------
 
 const todayKey = computed(() => dateKey(now.value))
 
-const nowTop = computed(() => {
+const nowTopFrac = computed(() => {
   const d = new Date(now.value)
   d.setHours(0, 0, 0, 0)
-  return ((+now.value - +d) / 3_600_000) * HOUR
+  return (+now.value - +d) / 86_400_000
 })
 
 // --- стартовый скролл: открываем день с ~7 утра ------------------------------
@@ -132,7 +142,7 @@ watch(
   () => props.days[0]?.dateKey,
   () => {
     if (scroller.value)
-      scroller.value.scrollTop = 7 * HOUR - 20
+      scroller.value.scrollTop = (7 / 24) * MIN_HOUR * 24 - 20
   },
   { immediate: true },
 )
@@ -141,11 +151,14 @@ watch(
 <template>
   <div
     ref="scroller"
-    class="mt-6 max-h-[calc(100dvh-150px)] overflow-auto overscroll-contain rounded-2xl border border-border bg-card/40"
+    class="mt-6 max-h-[calc(100dvh-150px)] min-h-[360px] overflow-auto overscroll-contain rounded-2xl border border-border bg-card/40 lg:h-[calc(100dvh-310px)] lg:max-h-none"
   >
     <div
-      class="grid min-w-[760px]"
-      :style="{ gridTemplateColumns: `52px repeat(${days.length}, minmax(92px, 1fr))`, gridTemplateRows: 'auto 1fr' }"
+      class="grid h-auto min-w-[760px] lg:h-full"
+      :style="{
+        gridTemplateColumns: `52px repeat(${days.length}, minmax(92px, 1fr))`,
+        gridTemplateRows: 'auto 1fr',
+      }"
     >
       <!-- шапка: уголок -->
       <div class="sticky top-0 left-0 z-30 border-r border-border/60 bg-card" />
@@ -175,13 +188,13 @@ watch(
       </div>
 
       <!-- левая колонка: подписи часов -->
-      <div class="sticky left-0 z-20 col-start-1 row-start-2 border-r border-border/60 bg-card/95 backdrop-blur-sm">
-        <div class="relative" :style="{ height: `${HOUR * 24}px` }">
+      <div class="sticky left-0 z-20 col-start-1 row-start-2 min-h-[960px] border-r border-border/60 bg-card/95 backdrop-blur-sm lg:min-h-0">
+        <div class="relative h-full">
           <span
             v-for="h in 24"
             :key="h"
             class="text-muted absolute left-2 text-[10px] tabular-nums"
-            :style="{ top: `${(h - 1) * HOUR}px`, transform: 'translateY(-50%)' }"
+            :style="{ top: `${((h - 1) / 24) * 100}%`, transform: 'translateY(-50%)' }"
           >
             {{ String(h - 1).padStart(2, '0') }}
           </span>
@@ -192,53 +205,53 @@ watch(
       <div
         v-for="d in days"
         :key="d.dateKey"
-        class="relative row-start-2 border-l border-border/60"
+        class="relative row-start-2 min-h-[960px] border-l border-border/60 lg:min-h-0"
         :class="dateKey(d.date) === todayKey && 'bg-foreground/[0.03]'"
-        :style="{ height: `${HOUR * 24}px` }"
       >
         <!-- часовые линии -->
         <div class="pointer-events-none absolute inset-0">
-          <div v-for="h in 23" :key="h" class="absolute w-full border-t border-border/40" :style="{ top: `${h * HOUR}px` }" />
+          <div v-for="h in 23" :key="h" class="absolute w-full border-t border-border/40" :style="{ top: `${(h / 24) * 100}%` }" />
         </div>
 
         <!-- плитки событий -->
         <article
           v-for="t in tilesByDay.get(d.dateKey)"
           :key="t.ev.id"
-          class="absolute z-1 cursor-pointer overflow-hidden rounded-lg border bg-card text-foreground shadow-sm"
+          class="absolute z-1 overflow-hidden rounded-lg border text-foreground shadow-sm"
           :class="[
-            editing ? 'cursor-pointer hover:border-foreground/50' : 'cursor-default border-border',
-            pendingDelete === t.ev.id && editing ? 'border-foreground ring-1 ring-foreground/20' : '',
+            colorClass(t.ev.id),
+            editing ? 'cursor-pointer hover:brightness-110' : 'cursor-default',
+            pendingDelete === t.ev.id && editing ? 'ring-1 ring-foreground/40' : '',
           ]"
           :style="laneStyle(t)"
           :title="`${t.startText}${t.endText ? ` – ${t.endText}` : ''} · ${t.ev.title}`"
           @click="editing && emit('edit', t.ev)"
         >
-          <!-- компактная при <40px, полная при высокой -->
-          <div v-if="t.height >= 40 && !editing" class="flex flex-col gap-0.5 px-1.5 py-1 text-left">
-            <span class="text-muted text-[9px] tabular-nums leading-none">
+          <!-- полная при >=14% суток (~3.4 часа), средняя при >=8%, компактная ниже -->
+          <div v-if="t.heightFrac >= 0.14 && !editing" class="flex flex-col gap-0.5 px-1.5 py-1 text-left">
+            <span class="time text-[9px] tabular-nums leading-none">
               {{ t.startText }}{{ t.endText ? ` – ${t.endText}` : '' }}{{ t.ranOver ? ' …' : '' }}
             </span>
             <span class="truncate text-xs leading-tight">{{ t.ev.title }}</span>
-            <span v-if="t.ev.description && t.height >= 96" class="text-muted/80 line-clamp-2 text-[10px] leading-snug">
+            <span v-if="t.ev.description && t.heightFrac >= 0.3" class="line-clamp-2 text-[10px] leading-snug opacity-70">
               {{ t.ev.description }}
             </span>
           </div>
           <div v-else-if="!editing" class="flex items-center justify-center px-1 text-center">
-            <span class="text-muted truncate text-[9px] tabular-nums" :class="t.height >= 26 && 'text-foreground'">
+            <span class="time truncate text-[9px] tabular-nums">
               {{ t.startText }} {{ t.ev.title }}
             </span>
           </div>
 
           <!-- режим правки: клик по плитке — форма, мусорка справа -->
           <div v-if="editing" class="flex h-full flex-col items-start gap-0.5 px-1.5 py-1">
-            <span class="text-muted text-[9px] tabular-nums leading-none">
+            <span class="time text-[9px] tabular-nums leading-none">
               {{ t.startText }}{{ t.endText ? ` – ${t.endText}` : '' }}
             </span>
             <button
               type="button"
               :title="pendingDelete === t.ev.id ? 'Точно удалить?' : 'Удалить'"
-              class="absolute top-0.5 right-0.5 grid size-6 place-items-center rounded text-muted outline-none transition-colors hover:text-foreground"
+              class="del absolute top-0.5 right-0.5 grid size-6 place-items-center rounded outline-none"
               @click.stop="emit('remove', t.ev)"
             >
               <Trash2 class="size-3" />
@@ -250,7 +263,7 @@ watch(
         <div
           v-if="dateKey(d.date) === todayKey"
           class="pointer-events-none absolute left-0 right-0 z-10"
-          :style="{ top: `${nowTop}px` }"
+          :style="{ top: `${nowTopFrac * 100}%` }"
         >
           <div class="h-px bg-accent" />
           <div class="absolute -top-1 left-0 size-2 rounded-full bg-accent" />
@@ -259,6 +272,33 @@ watch(
     </div>
   </div>
 </template>
+
+<style>
+/* Плитки: тоника через color-mix с токенами темы — сами цвета адаптируются
+   под светлую и тёмную тему, жёстких hex-значений в тексте нет.
+   Классы глобальные (не scoped), т.к. генерируются из JS. */
+.sw0 { background: color-mix(in srgb, #ef4444 20%, var(--color-card)); border-color: color-mix(in srgb, #ef4444 48%, var(--color-card)); color: color-mix(in srgb, #ef4444 60%, var(--color-foreground)); }
+.sw1 { background: color-mix(in srgb, #f97316 20%, var(--color-card)); border-color: color-mix(in srgb, #f97316 48%, var(--color-card)); color: color-mix(in srgb, #f97316 60%, var(--color-foreground)); }
+.sw2 { background: color-mix(in srgb, #eab308 20%, var(--color-card)); border-color: color-mix(in srgb, #eab308 48%, var(--color-card)); color: color-mix(in srgb, #eab308 60%, var(--color-foreground)); }
+.sw3 { background: color-mix(in srgb, #22c55e 20%, var(--color-card)); border-color: color-mix(in srgb, #22c55e 48%, var(--color-card)); color: color-mix(in srgb, #22c55e 60%, var(--color-foreground)); }
+.sw4 { background: color-mix(in srgb, #14b8a6 20%, var(--color-card)); border-color: color-mix(in srgb, #14b8a6 48%, var(--color-card)); color: color-mix(in srgb, #14b8a6 60%, var(--color-foreground)); }
+.sw5 { background: color-mix(in srgb, #3b82f6 20%, var(--color-card)); border-color: color-mix(in srgb, #3b82f6 48%, var(--color-card)); color: color-mix(in srgb, #3b82f6 60%, var(--color-foreground)); }
+.sw6 { background: color-mix(in srgb, #8b5cf6 20%, var(--color-card)); border-color: color-mix(in srgb, #8b5cf6 48%, var(--color-card)); color: color-mix(in srgb, #8b5cf6 60%, var(--color-foreground)); }
+.sw7 { background: color-mix(in srgb, #ec4899 20%, var(--color-card)); border-color: color-mix(in srgb, #ec4899 48%, var(--color-card)); color: color-mix(in srgb, #ec4899 60%, var(--color-foreground)); }
+
+/* время внутри плитки чуть блёклее, но остаётся в той же гаме */
+article .time {
+  color: color-mix(in srgb, currentColor 78%, var(--color-card));
+}
+
+/* мусорка: нейтральная в общем токе плитки */
+article .del {
+  color: color-mix(in srgb, currentColor 80%, var(--color-card));
+}
+article .del:hover {
+  color: var(--color-foreground);
+}
+</style>
 
 <style scoped>
 /* приятная прокрутка: тонкий браунованный борд вместо жирных нативных скроллов */

@@ -54,9 +54,10 @@ describe('ScheduleWeekGrid', () => {
     expect(tile.text()).toContain('17:20')
     expect(tile.text()).toContain('Йога')
     const style = tile.attributes('style') ?? ''
-    // 17 ч 20 мин + смещение таймзоны не учитываем: проверяем лишь что top задан в px
-    expect(style).toMatch(/top:\s*[\d.]+px/)
-    expect(style).toMatch(/height:\s*[\d.]+px/)
+    // позиция в % от суток: 17:20 → ~72.2% суток (не зависит от таймзоны)
+    expect(style).toMatch(/top:\s*[\d.]+%/)
+    expect(style).toMatch(/height:\s*[\d.]+%/)
+    expect(Number.parseFloat(String(style.match(/top: ([\d.]+)%/)?.[1]))).toBeCloseTo(72.2, 0)
   })
 
   it('пересекающиеся события делят колонку по дорожкам', () => {
@@ -66,8 +67,10 @@ describe('ScheduleWeekGrid', () => {
     ])
     const tiles = w.findAll('article')
     expect(tiles.length).toBe(2)
-    const widths = tiles.map(t => Number.parseFloat((t.attributes('style') ?? '').match(/width: calc\(([0-9.]+)%/)?.[1] ?? '0'))
-    expect(Math.max(...widths)).toBeLessThan(100) // делится, не наезжает
+    // обе плитки пересекаются → делят колонку на две дорожки
+    tiles.forEach((t) => {
+      expect(t.attributes('style') ?? '').toMatch(/width: calc\(50% - 6px\)/)
+    })
   })
 
   it('в режиме правки на плитке есть кнопка удаления', () => {
