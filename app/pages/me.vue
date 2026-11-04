@@ -80,6 +80,18 @@ const isToday = computed(() => startOf(anchor.value).getTime() === startOf(new D
 const dateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
+// колонки недельной сетки (понедельник текущей недели якоря)
+const weekDays = computed(() => {
+  if (mode.value !== 'week')
+    return []
+  const fmt = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' })
+  const monday = startOfWeek(anchor.value)
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(monday, i)
+    return { weekday: fmt.format(d), daynum: d.getDate(), dateKey: dateKey(d), date: d }
+  })
+})
+
 const dayTitle = computed(() =>
   new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(anchor.value))
 
