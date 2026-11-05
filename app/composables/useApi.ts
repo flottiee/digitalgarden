@@ -13,6 +13,9 @@ export interface ScheduleEventItem {
   description: string | null
   starts_at: string
   ends_at: string | null
+  is_todo: boolean
+  completed: boolean
+  overdue_since: string | null
   created_at: string
   updated_at: string
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, LogOut, Pencil, Plus, Trash2, X } from '@lucide/vue'
+import { Check, ChevronLeft, ChevronRight, LogOut, Pencil, Plus, Trash2, X } from '@lucide/vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { extractApiError, useApiClient, type ScheduleEventItem, type UserItem } from '~/composables/useApi'
 
@@ -54,8 +54,11 @@ async function logout() {
 
 // --- режим просмотра и навигация по датам ----------------------------------
 
-type Mode = 'day' | 'week'
-const mode = ref<Mode>('day')
+type Mode = 'todo' | 'day' | 'week'
+const mode = ref<Mode>('todo')
+const scheduleMode = computed(() => mode.value === 'todo' ? 'day' : mode.value)
+// недельный режим: страница растягивается на всю ширину/высоту экрана
+const wide = computed(() => !!user.value && mode.value === 'week')
 const anchor = ref(new Date())
 const editing = ref(false) // «карандашик»: включает режим правки
 
@@ -71,14 +74,26 @@ const startOfWeek = (d: Date) => {
 }
 
 const range = computed(() => {
-  const from = mode.value === 'day' ? startOf(anchor.value) : startOfWeek(anchor.value)
-  const days = mode.value === 'day' ? 1 : 7
+  const from = scheduleMode.value === 'day' ? startOf(anchor.value) : startOfWeek(anchor.value)
+  const days = scheduleMode.value === 'day' ? 1 : 7
   return { from, to: addDays(from, days) }
 })
 
 const isToday = computed(() => startOf(anchor.value).getTime() === startOf(new Date()).getTime())
 const dateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// колонки недельной сетки (понедельник текущей недели якоря)
+const weekDays = computed(() => {
+  if (mode.value !== 'week')
+    return []
+  const fmt = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' })
+  const monday = startOfWeek(anchor.value)
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(monday, i)
+    return { weekday: fmt.format(d), daynum: d.getDate(), dateKey: dateKey(d), date: d }
+  })
+})
 
 const dayTitle = computed(() =>
   new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(anchor.value))
@@ -88,16 +103,23 @@ const weekTitle = computed(() => {
   return `${fmt.format(range.value.from)} — ${fmt.format(addDays(range.value.to, -1))}`
 })
 
-const periodTitle = computed(() => (mode.value === 'day' ? dayTitle.value : weekTitle.value))
+const periodTitle = computed(() => (scheduleMode.value === 'day' ? dayTitle.value : weekTitle.value))
 
 function shift(dir: -1 | 1) {
-  anchor.value = addDays(anchor.value, dir * (mode.value === 'day' ? 1 : 7))
+  anchor.value = addDays(anchor.value, dir * (scheduleMode.value === 'day' ? 1 : 7))
 }
 
 // --- данные событий --------------------------------------------------------
 
 const events = ref<ScheduleEventItem[]>([])
 const loadError = ref(false)
+const todoEvents = computed(() => events.value.filter(e => e.is_todo).sort((a, b) => {
+  if (a.completed !== b.completed) return a.completed ? 1 : -1
+  if (a.overdue_since && b.overdue_since) return +new Date(a.overdue_since) - +new Date(b.overdue_since)
+  if (a.overdue_since) return -1
+  if (b.overdue_since) return 1
+  return +new Date(a.starts_at) - +new Date(b.starts_at)
+}))
 
 async function load() {
   if (!user.value)
@@ -144,6 +166,7 @@ const form = reactive({
   description: '',
   startsAt: '',
   endsAt: '',
+  isTodo: false,
 })
 
 function openCreate(date?: Date) {
@@ -154,6 +177,7 @@ function openCreate(date?: Date) {
   const base = date ?? anchor.value
   form.startsAt = `${dateKey(base)}T09:00`
   form.endsAt = ''
+  form.isTodo = mode.value === 'todo'
   formOpen.value = true
 }
 
@@ -164,6 +188,7 @@ function openEdit(ev: ScheduleEventItem) {
   form.description = ev.description ?? ''
   form.startsAt = toLocalInput(ev.starts_at)
   form.endsAt = ev.ends_at ? toLocalInput(ev.ends_at) : ''
+  form.isTodo = ev.is_todo
   formOpen.value = true
 }
 
@@ -188,8 +213,9 @@ async function submitEvent() {
   const body = {
     title: form.title.trim(),
     description: form.description.trim() || null,
-    starts_at: starts.toISOString(),
+    starts_at: form.isTodo ? new Date(`${form.startsAt.slice(0, 10)}T00:00:00`).toISOString() : starts.toISOString(),
     ends_at: ends?.toISOString() ?? null,
+    is_todo: form.isTodo,
   }
   try {
     await (editingId.value
@@ -201,6 +227,17 @@ async function submitEvent() {
   catch (error) {
     formError.value = extractApiError(error)
   }
+}
+
+async function toggleTodo(ev: ScheduleEventItem) {
+  await api(`/api/events/${ev.id}`, { method: 'PATCH', body: { completed: !ev.completed } })
+  await load()
+}
+
+async function deleteTodo(ev: ScheduleEventItem) {
+  if (!ev.completed) return
+  await api(`/api/events/${ev.id}`, { method: 'DELETE' })
+  await load()
 }
 
 // --- удаление (двухшаговое подтверждение) -----------------------------------
@@ -254,7 +291,10 @@ onMounted(checkAuth)
       </template>
     </header>
 
-    <main class="relative z-[1] mx-auto w-full max-w-3xl flex-1 px-4 pt-16 pb-20 sm:px-6 sm:pt-24">
+    <main
+      class="relative z-[1] mx-auto w-full flex-1 px-4 pt-6 pb-8 sm:px-6 sm:pt-8"
+      :class="wide ? 'max-w-7xl lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden' : 'max-w-3xl sm:pt-24 sm:pb-20'"
+    >
       <!-- состояние: проверяем доступ -->
       <p v-if="authState === 'pending'" class="pt-10 text-center text-sm text-muted">
         Загрузка…
@@ -363,10 +403,10 @@ onMounted(checkAuth)
             <span
               aria-hidden="true"
               class="pointer-events-none absolute top-1 h-[calc(100%-8px)] w-16 rounded-full bg-foreground transition-transform duration-300 ease-out"
-              :style="{ transform: `translateX(${mode === 'day' ? 0 : 64}px)` }"
+              :style="{ transform: `translateX(${mode === 'todo' ? 0 : mode === 'day' ? 64 : 128}px)` }"
             />
             <button
-              v-for="m in [['day', 'День'], ['week', 'Неделя']] as const"
+              v-for="m in [['todo', 'Задачи'], ['day', 'День'], ['week', 'Неделя']] as const"
               :key="m[0]"
               role="radio"
               :aria-checked="mode === m[0]"
@@ -380,7 +420,7 @@ onMounted(checkAuth)
 
           <div class="flex items-center gap-1">
             <button
-              v-if="editing && mode === 'day'"
+              v-if="editing && mode !== 'week'"
               type="button"
               class="mr-2 flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs outline-none transition-colors hover:bg-card"
               @click="openCreate(anchor)"
@@ -397,7 +437,7 @@ onMounted(checkAuth)
               <ChevronLeft class="size-4" />
             </button>
             <span class="w-24 text-center text-xs tabular-nums text-muted">
-              {{ mode === 'day' ? dayTitle.split(', ')[1] : '' }}
+              {{ scheduleMode === 'day' ? dayTitle.split(', ')[1] : '' }}
             </span>
             <button
               type="button"
@@ -421,8 +461,8 @@ onMounted(checkAuth)
         </div>
 
         <!-- период -->
-        <section class="mt-8" aria-live="polite">
-          <h2 class="text-sm font-medium">
+        <section class="mt-6 flex flex-col lg:mt-4 lg:min-h-0 lg:flex-1" aria-live="polite">
+          <h2 v-if="mode !== 'todo'" class="text-sm font-medium">
             <span class="sr-only">Период: </span>{{ periodTitle }}
           </h2>
 
@@ -433,8 +473,22 @@ onMounted(checkAuth)
             </button>
           </p>
 
+          <!-- задачи без времени -->
+          <ul v-if="!loadError && mode === 'todo'" class="mt-4 divide-y divide-border">
+            <li v-for="ev in todoEvents" :key="ev.id" class="flex items-start gap-3 py-3">
+              <input type="checkbox" :checked="ev.completed" class="mt-1 size-4 accent-current" :aria-label="`Выполнено: ${ev.title}`" @change="toggleTodo(ev)">
+              <div class="min-w-0 flex-1" :class="ev.completed && 'text-muted line-through'">
+                <p>{{ ev.title }}</p>
+                <p v-if="ev.overdue_since && !ev.completed" class="mt-0.5 text-xs text-muted">Просрочено с {{ new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(ev.overdue_since)) }}</p>
+                <p v-if="ev.description" class="text-muted mt-0.5 text-sm leading-relaxed">{{ ev.description }}</p>
+              </div>
+              <button v-if="ev.completed" type="button" title="Удалить выполненную задачу" class="grid size-8 place-items-center rounded-full text-muted outline-none hover:text-foreground" @click="deleteTodo(ev)"><Trash2 class="size-3.5" /></button>
+            </li>
+            <li v-if="!todoEvents.length" class="py-4"><p class="text-muted text-sm">Задач пока нет.</p></li>
+          </ul>
+
           <!-- день -->
-          <ul v-else-if="mode === 'day'" class="mt-4 divide-y divide-border">
+          <ul v-else-if="!loadError && scheduleMode === 'day'" class="mt-4 divide-y divide-border">
             <li
               v-for="ev in events"
               :key="ev.id"
@@ -478,7 +532,7 @@ onMounted(checkAuth)
 
           <!-- неделя: сетка 7×24 с плитками -->
           <ScheduleWeekGrid
-            v-else
+            v-else-if="!loadError"
             :days="weekDays"
             :events="events"
             :editing="editing"
@@ -535,15 +589,15 @@ onMounted(checkAuth)
           </label>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label class="flex flex-col gap-1.5">
-              <span class="text-muted text-xs">начало</span>
+              <span class="text-muted text-xs">{{ form.isTodo ? 'дата задачи' : 'начало' }}</span>
               <input
                 v-model="form.startsAt"
-                type="datetime-local"
+                :type="form.isTodo ? 'date' : 'datetime-local'"
                 required
                 class="rounded-lg border border-border bg-background px-3 py-2 text-sm tabular-nums outline-none focus:border-accent"
               >
             </label>
-            <label class="flex flex-col gap-1.5">
+            <label v-if="!form.isTodo" class="flex flex-col gap-1.5">
               <span class="text-muted text-xs">конец <span class="text-muted/60">(необязательно)</span></span>
               <input
                 v-model="form.endsAt"
@@ -552,6 +606,10 @@ onMounted(checkAuth)
               >
             </label>
           </div>
+          <label class="flex items-center gap-2 text-xs text-muted">
+            <input v-model="form.isTodo" type="checkbox" class="size-4 accent-current">
+            Задача без времени
+          </label>
           <p v-if="formError" class="text-xs" role="alert">
             {{ formError }}
           </p>
