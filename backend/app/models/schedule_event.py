@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -34,6 +34,9 @@ class ScheduleEvent(Base):
     # браузер клиента рисует его в своей таймзоне
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    is_todo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    overdue_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
