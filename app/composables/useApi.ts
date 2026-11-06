@@ -13,9 +13,15 @@ export interface ScheduleEventItem {
   description: string | null
   starts_at: string
   ends_at: string | null
-  is_todo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TodoItem {
+  id: string
+  title: string
+  description: string | null
   completed: boolean
-  overdue_since: string | null
   created_at: string
   updated_at: string
 }

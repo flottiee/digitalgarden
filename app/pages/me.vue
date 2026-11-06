@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Check, ChevronLeft, ChevronRight, LogOut, Pencil, Plus, Trash2, X } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, LogOut, Pencil, Plus, Trash2, X } from '@lucide/vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { extractApiError, useApiClient, type ScheduleEventItem, type UserItem } from '~/composables/useApi'
+import { extractApiError, useApiClient, type ScheduleEventItem, type TodoItem, type UserItem } from '~/composables/useApi'
 
 useHead({ title: 'Расписание — flottiee.bond' })
 
@@ -50,6 +50,7 @@ async function logout() {
   await api('/auth/logout', { method: 'POST' }).catch(() => null)
   user.value = null
   events.value = []
+  todos.value = []
 }
 
 // --- режим просмотра и навигация по датам ----------------------------------
@@ -112,26 +113,30 @@ function shift(dir: -1 | 1) {
 // --- данные событий --------------------------------------------------------
 
 const events = ref<ScheduleEventItem[]>([])
+const todos = ref<TodoItem[]>([])
 const loadError = ref(false)
-const todoEvents = computed(() => events.value.filter(e => e.is_todo).sort((a, b) => {
+const todoItems = computed(() => todos.value.slice().sort((a, b) => {
   if (a.completed !== b.completed) return a.completed ? 1 : -1
-  if (a.overdue_since && b.overdue_since) return +new Date(a.overdue_since) - +new Date(b.overdue_since)
-  if (a.overdue_since) return -1
-  if (b.overdue_since) return 1
-  return +new Date(a.starts_at) - +new Date(b.starts_at)
+  return +new Date(a.created_at) - +new Date(b.created_at)
 }))
+const calendarEvents = computed(() => events.value)
 
 async function load() {
   if (!user.value)
     return
   loadError.value = false
   try {
-    events.value = await api<ScheduleEventItem[]>('/api/events', {
+    const [loadedEvents, loadedTodos] = await Promise.all([
+      api<ScheduleEventItem[]>('/api/events', {
       params: {
         from_at: range.value.from.toISOString(),
         to: range.value.to.toISOString(),
       },
-    })
+      }),
+      api<TodoItem[]>('/api/todos'),
+    ])
+    events.value = loadedEvents
+    todos.value = loadedTodos
   }
   catch {
     loadError.value = true
@@ -159,6 +164,7 @@ const toLocalInput = (iso: string) => {
 // --- форма события ----------------------------------------------------------
 
 const formOpen = ref(false)
+const todoFormOpen = ref(false)
 const editingId = ref<string | null>(null)
 const formError = ref<string | null>(null)
 const form = reactive({
@@ -166,8 +172,9 @@ const form = reactive({
   description: '',
   startsAt: '',
   endsAt: '',
-  isTodo: false,
 })
+const todoForm = reactive({ title: '', description: '' })
+const todoFormError = ref<string | null>(null)
 
 function openCreate(date?: Date) {
   editingId.value = null
@@ -177,8 +184,25 @@ function openCreate(date?: Date) {
   const base = date ?? anchor.value
   form.startsAt = `${dateKey(base)}T09:00`
   form.endsAt = ''
-  form.isTodo = mode.value === 'todo'
   formOpen.value = true
+}
+
+function openCreateTodo() {
+  todoFormError.value = null
+  todoForm.title = ''
+  todoForm.description = ''
+  todoFormOpen.value = true
+}
+
+async function submitTodo() {
+  todoFormError.value = null
+  if (!todoForm.title.trim()) { todoFormError.value = 'Заполните название'; return }
+  try {
+    await api('/api/todos', { method: 'POST', body: { title: todoForm.title.trim(), description: todoForm.description.trim() || null } })
+    todoFormOpen.value = false
+    await load()
+  }
+  catch (error) { todoFormError.value = extractApiError(error) }
 }
 
 function openEdit(ev: ScheduleEventItem) {
@@ -188,7 +212,6 @@ function openEdit(ev: ScheduleEventItem) {
   form.description = ev.description ?? ''
   form.startsAt = toLocalInput(ev.starts_at)
   form.endsAt = ev.ends_at ? toLocalInput(ev.ends_at) : ''
-  form.isTodo = ev.is_todo
   formOpen.value = true
 }
 
@@ -204,18 +227,25 @@ async function submitEvent() {
     formError.value = 'Заполните название'
     return
   }
+  if (!form.startsAt || !form.endsAt) {
+    formError.value = 'Укажите начало и конец'
+    return
+  }
   const starts = new Date(form.startsAt)
-  const ends = form.endsAt ? new Date(form.endsAt) : null
-  if (Number.isNaN(starts.getTime()) || (ends && ends.getTime() <= starts.getTime())) {
+  const ends = new Date(form.endsAt)
+  if (Number.isNaN(starts.getTime()) || Number.isNaN(ends.getTime())) {
+    formError.value = 'Укажите корректные начало и конец'
+    return
+  }
+  if (ends.getTime() <= starts.getTime()) {
     formError.value = 'Конец должен быть позже начала'
     return
   }
   const body = {
     title: form.title.trim(),
     description: form.description.trim() || null,
-    starts_at: form.isTodo ? new Date(`${form.startsAt.slice(0, 10)}T00:00:00`).toISOString() : starts.toISOString(),
-    ends_at: ends?.toISOString() ?? null,
-    is_todo: form.isTodo,
+    starts_at: starts.toISOString(),
+    ends_at: ends.toISOString(),
   }
   try {
     await (editingId.value
@@ -229,14 +259,14 @@ async function submitEvent() {
   }
 }
 
-async function toggleTodo(ev: ScheduleEventItem) {
-  await api(`/api/events/${ev.id}`, { method: 'PATCH', body: { completed: !ev.completed } })
+async function toggleTodo(todo: TodoItem) {
+  await api(`/api/todos/${todo.id}`, { method: 'PATCH', body: { completed: !todo.completed } })
   await load()
 }
 
-async function deleteTodo(ev: ScheduleEventItem) {
-  if (!ev.completed) return
-  await api(`/api/events/${ev.id}`, { method: 'DELETE' })
+async function deleteTodo(todo: TodoItem) {
+  if (!todo.completed) return
+  await api(`/api/todos/${todo.id}`, { method: 'DELETE' })
   await load()
 }
 
@@ -420,13 +450,22 @@ onMounted(checkAuth)
 
           <div class="flex items-center gap-1">
             <button
-              v-if="editing && mode !== 'week'"
+              v-if="editing"
               type="button"
               class="mr-2 flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs outline-none transition-colors hover:bg-card"
               @click="openCreate(anchor)"
             >
               <Plus class="size-3.5" />
-              Добавить
+              Событие
+            </button>
+            <button
+              v-if="editing"
+              type="button"
+              class="mr-2 flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs outline-none transition-colors hover:bg-card"
+              @click="openCreateTodo"
+            >
+              <Plus class="size-3.5" />
+              Задача
             </button>
             <button
               type="button"
@@ -475,22 +514,21 @@ onMounted(checkAuth)
 
           <!-- задачи без времени -->
           <ul v-if="!loadError && mode === 'todo'" class="mt-4 divide-y divide-border">
-            <li v-for="ev in todoEvents" :key="ev.id" class="flex items-start gap-3 py-3">
-              <input type="checkbox" :checked="ev.completed" class="mt-1 size-4 accent-current" :aria-label="`Выполнено: ${ev.title}`" @change="toggleTodo(ev)">
-              <div class="min-w-0 flex-1" :class="ev.completed && 'text-muted line-through'">
-                <p>{{ ev.title }}</p>
-                <p v-if="ev.overdue_since && !ev.completed" class="mt-0.5 text-xs text-muted">Просрочено с {{ new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(ev.overdue_since)) }}</p>
-                <p v-if="ev.description" class="text-muted mt-0.5 text-sm leading-relaxed">{{ ev.description }}</p>
+            <li v-for="todo in todoItems" :key="todo.id" class="flex items-start gap-3 py-3">
+              <input type="checkbox" :checked="todo.completed" class="mt-1 size-4 accent-current" :aria-label="`Выполнено: ${todo.title}`" @change="toggleTodo(todo)">
+              <div class="min-w-0 flex-1" :class="todo.completed && 'text-muted line-through'">
+                <p>{{ todo.title }}</p>
+                <p v-if="todo.description" class="text-muted mt-0.5 text-sm leading-relaxed">{{ todo.description }}</p>
               </div>
-              <button v-if="ev.completed" type="button" title="Удалить выполненную задачу" class="grid size-8 place-items-center rounded-full text-muted outline-none hover:text-foreground" @click="deleteTodo(ev)"><Trash2 class="size-3.5" /></button>
+              <button v-if="todo.completed" type="button" title="Удалить выполненную задачу" class="grid size-8 place-items-center rounded-full text-muted outline-none hover:text-foreground" @click="deleteTodo(todo)"><Trash2 class="size-3.5" /></button>
             </li>
-            <li v-if="!todoEvents.length" class="py-4"><p class="text-muted text-sm">Задач пока нет.</p></li>
+            <li v-if="!todoItems.length" class="py-4"><p class="text-muted text-sm">Задач пока нет.</p></li>
           </ul>
 
           <!-- день -->
           <ul v-else-if="!loadError && scheduleMode === 'day'" class="mt-4 divide-y divide-border">
             <li
-              v-for="ev in events"
+              v-for="ev in calendarEvents"
               :key="ev.id"
               class="flex items-start gap-4 py-3"
             >
@@ -523,7 +561,7 @@ onMounted(checkAuth)
                 </button>
               </div>
             </li>
-            <li v-if="!events.length && !editing" class="py-4">
+            <li v-if="!calendarEvents.length && !editing" class="py-4">
               <p class="text-muted text-sm">
                 На этот день событий нет.
               </p>
@@ -534,7 +572,7 @@ onMounted(checkAuth)
           <ScheduleWeekGrid
             v-else-if="!loadError"
             :days="weekDays"
-            :events="events"
+            :events="calendarEvents"
             :editing="editing"
             :pending-delete="pendingDelete"
             @edit="openEdit"
@@ -589,27 +627,24 @@ onMounted(checkAuth)
           </label>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label class="flex flex-col gap-1.5">
-              <span class="text-muted text-xs">{{ form.isTodo ? 'дата задачи' : 'начало' }}</span>
+              <span class="text-muted text-xs">начало</span>
               <input
                 v-model="form.startsAt"
-                :type="form.isTodo ? 'date' : 'datetime-local'"
+                type="datetime-local"
                 required
                 class="rounded-lg border border-border bg-background px-3 py-2 text-sm tabular-nums outline-none focus:border-accent"
               >
             </label>
-            <label v-if="!form.isTodo" class="flex flex-col gap-1.5">
-              <span class="text-muted text-xs">конец <span class="text-muted/60">(необязательно)</span></span>
+            <label class="flex flex-col gap-1.5">
+              <span class="text-muted text-xs">конец</span>
               <input
                 v-model="form.endsAt"
                 type="datetime-local"
+                required
                 class="rounded-lg border border-border bg-background px-3 py-2 text-sm tabular-nums outline-none focus:border-accent"
               >
             </label>
           </div>
-          <label class="flex items-center gap-2 text-xs text-muted">
-            <input v-model="form.isTodo" type="checkbox" class="size-4 accent-current">
-            Задача без времени
-          </label>
           <p v-if="formError" class="text-xs" role="alert">
             {{ formError }}
           </p>
@@ -627,6 +662,51 @@ onMounted(checkAuth)
             >
               Сохранить
             </button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- форма задачи: без даты и времени -->
+    <div
+      v-if="todoFormOpen"
+      class="fixed inset-0 z-30 grid place-items-end bg-black/30 p-4 backdrop-blur-[2px] sm:place-items-center"
+      @click.self="todoFormOpen = false"
+    >
+      <form
+        class="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-lg"
+        @submit.prevent="submitTodo"
+      >
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold">Новая задача</h3>
+          <button type="button" class="text-muted outline-none hover:text-foreground" @click="todoFormOpen = false">
+            <X class="size-4" />
+          </button>
+        </div>
+        <div class="mt-5 flex flex-col gap-4">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-muted text-xs">название</span>
+            <input
+              v-model="todoForm.title"
+              type="text"
+              maxlength="200"
+              required
+              class="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+            >
+          </label>
+          <label class="flex flex-col gap-1.5">
+            <span class="text-muted text-xs">описание <span class="text-muted/60">(необязательно)</span></span>
+            <textarea
+              v-model="todoForm.description"
+              rows="2"
+              maxlength="5000"
+              class="resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+          </label>
+          <p v-if="todoFormError" class="text-xs" role="alert">{{ todoFormError }}</p>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="rounded-full px-4 py-2 text-xs text-muted outline-none hover:text-foreground" @click="todoFormOpen = false">Отмена</button>
+            <button type="submit" class="rounded-full bg-foreground px-5 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90">Сохранить</button>
           </div>
         </div>
       </form>

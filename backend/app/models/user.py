@@ -11,6 +11,7 @@ from app.core.db import Base
 
 if TYPE_CHECKING:
     from app.models.schedule_event import ScheduleEvent
+    from app.models.todo import Todo
 
 
 class User(Base):
@@ -32,6 +33,10 @@ class User(Base):
     # связь: у пользователя список его событий.
     # cascade: удаление пользователя каскадно удалит его события
     events: Mapped[list["ScheduleEvent"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    todos: Mapped[list["Todo"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
