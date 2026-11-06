@@ -24,13 +24,11 @@ function setSpacing(e: Event) {
       <ThemeSwitcher />
     </header>
 
-    <main class="relative z-[1] flex flex-1 flex-col items-center justify-center px-6 text-center">
+    <main class="relative z-[1] flex flex-1 flex-col items-center justify-center px-6 pt-24 pb-10 text-center">
       <h1 class="text-5xl font-semibold tracking-tight sm:text-7xl">
         flottiee<span class="text-muted">.bond</span>
       </h1>
-      <p class="text-muted mt-4 max-w-sm text-base leading-relaxed sm:text-lg">
-        Страница собирается. Пока здесь почти пусто — но не совсем.
-      </p>
+      <GitHubContributions />
       <p class="text-muted/70 mt-10 text-xs tracking-wide sm:text-sm">
         водите курсором · покликайте · крутите настройки внизу
       </p>
