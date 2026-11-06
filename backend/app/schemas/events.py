@@ -11,8 +11,7 @@ class EventCreate(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     # ISO 8601: "2026-11-05T14:30:00+03:00".Moment обязателен
     starts_at: datetime
-    ends_at: datetime | None = None
-    is_todo: bool = False
+    ends_at: datetime
 
     @model_validator(mode="after")
     def ends_after_starts(self) -> "EventCreate":
@@ -28,8 +27,6 @@ class EventUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     starts_at: datetime | None = None
     ends_at: datetime | None = None
-    is_todo: bool | None = None
-    completed: bool | None = None
 
     @model_validator(mode="after")
     def _pair_valid(self) -> "EventUpdate":
@@ -46,9 +43,6 @@ class EventOut(BaseModel):
     title: str
     description: str | None
     starts_at: datetime
-    ends_at: datetime | None
-    is_todo: bool
-    completed: bool
-    overdue_since: datetime | None
+    ends_at: datetime
     created_at: datetime
     updated_at: datetime

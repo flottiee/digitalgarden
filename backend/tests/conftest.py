@@ -48,7 +48,7 @@ async def clean_tables(migrations) -> AsyncIterator[None]:
 
 async def _truncate() -> None:
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE users, schedule_events"))
+        await conn.execute(text("TRUNCATE users, schedule_events, todos CASCADE"))
 
 
 @fixture
